@@ -1,14 +1,13 @@
-
 const express = require('express');
-const mysql = require('mysql2');
-const mysql = require('mysql');
 const bcrypt = require('bcrypt');
+//const mysql = require('mysql2'); // Remove this line if not used
 const { body, validationResult } = require('express-validator');
 const cors = require('cors');
 const pool = require('./db'); // Import the database connection
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 4000;
+
 
 // Middleware
 app.use(express.json());

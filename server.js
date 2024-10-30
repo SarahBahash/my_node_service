@@ -1,13 +1,12 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-//const mysql = require('mysql2'); // Remove this line if not used
 const { body, validationResult } = require('express-validator');
 const cors = require('cors');
 const pool = require('./db'); // Import the database connection
 
 const app = express();
 const port = process.env.PORT || 4000;
-
+const saltRounds = 10; // for bcrypt
 
 // Middleware
 app.use(express.json());
@@ -41,14 +40,12 @@ app.post('/api/signup', [
         );
 
         if (existingUser.length > 0) {
-            // User already exists
             return res.status(409).json({ message: 'User already exists with this email.' });
         }
 
-        // Hash the password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Hash password before storing
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        // Insert new user
         const [result] = await pool.query(
             'INSERT INTO users_old (name, age, email, phone, password) VALUES (?, ?, ?, ?, ?)',
             [name, age, email, phone, hashedPassword]
@@ -74,57 +71,92 @@ app.post('/api/login', [
     const { email, password } = req.body;
 
     try {
-        const [user] = await pool.query(
-            'SELECT * FROM users_old WHERE email = ?',
-            [email]
-        );
+        const [rows] = await pool.query('SELECT * FROM users_old WHERE email = ?', [email]);
 
-        if (user.length === 0) {
+        if (rows.length === 0) {
             return res.status(404).json({ message: 'Email does not exist. Please sign up.' });
         }
 
-        const isMatch = await bcrypt.compare(password, user[0].password);
+        const user = rows[0];
+
+        // Compare hashed password
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: 'Incorrect password. Please try again.' });
         }
 
-        res.status(200).json({ message: 'Login successful', userId: user[0].id });
+        res.status(200).json({ message: 'Login successful', userId: user.id });
     } catch (error) {
-        console.error(error);
+        console.error('Error during login:', error);
         res.status(500).json({ error: 'An unexpected error occurred' });
     }
 });
 
-// Reservation endpoint
+const { body, validationResult } = require('express-validator');
+const pool = require('./database'); // assuming database pool is imported from another file
+
+// Driver reservation endpoint for driver_reservations table
 app.post('/api/reserve', [
-    body('userId').isInt().withMessage('User ID is required'),
+    body('email').isEmail().withMessage('Valid email is required'),
     body('city').notEmpty().withMessage('City is required'),
     body('street').notEmpty().withMessage('Street is required'),
     body('postcode').notEmpty().withMessage('Postcode is required'),
-    body('terminal').notEmpty().withMessage('Terminal is required'),
-    body('pickupTime').notEmpty().withMessage('Pickup time is required'),
 ], async (req, res) => {
+    console.log('Driver reservation request received:', req.body); // Log request
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+        console.error("Validation errors:", errors.array());
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { userId, city, street, postcode, terminal, pickupTime } = req.body;
+    const { email, city, street, postcode } = req.body;
 
     try {
-        // Insert new reservation
-        const [result] = await pool.query(
-            'INSERT INTO reservations_old (user_id, city, street, postcode, terminal, pickup_time) VALUES (?, ?, ?, ?, ?, ?)',
-            [userId, city, street, postcode, terminal, pickupTime]
+        const [reservationResult] = await pool.query(
+            'INSERT INTO f_driver (email, city, street, postcode) VALUES (?, ?, ?, ?)',
+            [email, city, street, postcode]
         );
 
-        res.status(201).json({ id: result.insertId, message: 'Reservation created' });
+        res.status(201).json({ id: reservationResult.insertId, message: 'Driver reservation created' });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'An unexpected error occurred' });
+        console.error("Error during driver reservation:", error.message || error);
+        res.status(500).json({ error: 'An unexpected error occurred while processing the driver reservation' });
     }
 });
 
-app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+// Lounge reservation endpoint for lounge_reservations table
+app.post('/api/reserve-lounge', [
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('lounge_name').notEmpty().withMessage('Lounge name is required'),
+    body('departure_time').isISO8601().withMessage('Valid ISO8601 departure time is required'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        console.error("Validation errors:", errors.array());
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, lounge_name, departure_time } = req.body;
+
+    try {
+        // Insert reservation into f_lounge
+        const [reservationResult] = await pool.query(
+            'INSERT INTO f_lounge (email, lounge_name, departure_date_time) VALUES (?, ?, ?)',
+            [email, lounge_name, departure_time]
+        );
+
+        res.status(201).json({ id: reservationResult.insertId, message: 'Lounge reservation created' });
+    } catch (error) {
+        console.error("Error during lounge reservation:", error.message || error);
+        res.status(500).json({ error: 'An unexpected error occurred while processing the lounge reservation' });
+    }
+});
+
+
+
+// Start the server
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });

@@ -180,13 +180,43 @@ app.post('/api/reserve-parking', [
             `INSERT INTO parking_reservations (
                  user_name, vehicle_number, reservation_date, start_time, parking_slot, email, time_period, phone
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [user_name, vehicle_number, reservation_date, start_time, , parking_slot, email, time_period, phone]
+            [user_name, vehicle_number, reservation_date, formattedStartTime, parking_slot, email, time_period, phone]
         );
 
         res.status(201).json({ id: reservationResult.insertId, message: 'Parking reservation created' });
     } catch (error) {
         console.error("Error during parking reservation:", error.message || error);
         res.status(500).json({ error: 'An unexpected error occurred while processing the parking reservation' });
+    }
+});
+
+// Personal Companion reservation endpoint for personal_companion_reservation table
+app.post('/api/reserve-personal-companion', [
+    body('name').notEmpty().withMessage('Name is required'),
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('phone').notEmpty().withMessage('Phone number is required'),
+    body('date').isISO8601().withMessage('Valid reservation date is required'),
+    body('time').notEmpty().withMessage('Time is required'),
+    body('staff').notEmpty().withMessage('Staff name is required'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        console.error("Validation errors:", errors.array());
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, email, phone, date, time, staff } = req.body;
+
+    try {
+        const [reservationResult] = await pool.query(
+            'INSERT INTO personal_companion_reservation (name, email, phone, date, time, staff) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, email, phone, date, time, staff]
+        );
+
+        res.status(201).json({ id: reservationResult.insertId, message: 'Personal companion reservation created' });
+    } catch (error) {
+        console.error("Error during personal companion reservation:", error.message || error);
+        res.status(500).json({ error: 'An unexpected error occurred while processing the personal companion reservation' });
     }
 });
 

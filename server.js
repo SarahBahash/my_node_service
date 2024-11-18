@@ -5,7 +5,7 @@ const cors = require('cors');
 const pool = require('./db'); // Import the database connection
 
 const app = express();
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 6000;
 const saltRounds = 10; // for bcrypt
 
 // Middleware
@@ -92,8 +92,7 @@ app.post('/api/login', [
     }
 });
 
-const { body, validationResult } = require('express-validator');
-const pool = require('./database'); // assuming database pool is imported from another file
+
 
 // Driver reservation endpoint for driver_reservations table
 app.post('/api/reserve', [
@@ -154,9 +153,46 @@ app.post('/api/reserve-lounge', [
 });
 
 
+// Parking reservation endpoint for parking_reservations table
+app.post('/api/reserve-parking', [
+    body('user_name').notEmpty().withMessage('User name is required'),
+    body('phone').notEmpty().withMessage('phone is required'),
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('vehicle_number').notEmpty().withMessage('Vehicle number is required'),
+    body('reservation_date').isISO8601().withMessage('Valid reservation date is required'),
+    body('start_time').notEmpty().withMessage('Start time is required'),
+    body('parking_slot').notEmpty().withMessage('Parking slot is required'),
+    body('time_period').notEmpty().withMessage('Time period is required'),
+    
+
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        console.error("Validation errors:", errors.array());
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { user_name, vehicle_number, reservation_date, start_time, parking_slot, email, time_period, phone } = req.body;
+
+    try {
+        // Insert reservation into parking_reservations table
+        const [reservationResult] = await pool.query(
+            `INSERT INTO parking_reservations (
+                 user_name, vehicle_number, reservation_date, start_time, parking_slot, email, time_period, phone
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [user_name, vehicle_number, reservation_date, start_time, , parking_slot, email, time_period, phone]
+        );
+
+        res.status(201).json({ id: reservationResult.insertId, message: 'Parking reservation created' });
+    } catch (error) {
+        console.error("Error during parking reservation:", error.message || error);
+        res.status(500).json({ error: 'An unexpected error occurred while processing the parking reservation' });
+    }
+});
+
+
 
 // Start the server
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
 });

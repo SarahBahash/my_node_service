@@ -94,35 +94,44 @@ app.post('/api/login', [
 
 
 
+
 // Driver reservation endpoint for driver_reservations table
-app.post('/api/reserve', [
+app.post('/api/reserve-driver', [
     body('email').isEmail().withMessage('Valid email is required'),
     body('city').notEmpty().withMessage('City is required'),
     body('street').notEmpty().withMessage('Street is required'),
     body('postcode').notEmpty().withMessage('Postcode is required'),
+    body('terminal').notEmpty().withMessage('Terminal is required'),
+    body('pickup_time').notEmpty().withMessage('Pickup time is required'),
+    body('driver').notEmpty().withMessage('Driver name is required'),
 ], async (req, res) => {
-    console.log('Driver reservation request received:', req.body); // Log request
 
+    // Validate request data
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         console.error("Validation errors:", errors.array());
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, city, street, postcode } = req.body;
+    const { email, city, street, postcode, terminal, pickup_time, driver } = req.body;
 
     try {
+        // Insert reservation data into the database
         const [reservationResult] = await pool.query(
-            'INSERT INTO f_driver (email, city, street, postcode) VALUES (?, ?, ?, ?)',
-            [email, city, street, postcode]
+            'INSERT INTO driver_reservations (email, city, street, postcode, terminal, pickup_time, driver) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [email, city, street, postcode, terminal, pickup_time, driver]
         );
 
+        // Respond with success
         res.status(201).json({ id: reservationResult.insertId, message: 'Driver reservation created' });
     } catch (error) {
         console.error("Error during driver reservation:", error.message || error);
         res.status(500).json({ error: 'An unexpected error occurred while processing the driver reservation' });
     }
 });
+
+
+
 
 // Lounge reservation endpoint for lounge_reservations table
 app.post('/api/reserve-lounge', [
@@ -153,6 +162,12 @@ app.post('/api/reserve-lounge', [
 });
 
 
+
+
+
+
+
+
 // Parking reservation endpoint for parking_reservations table
 app.post('/api/reserve-parking', [
     body('user_name').notEmpty().withMessage('User name is required'),
@@ -180,15 +195,21 @@ app.post('/api/reserve-parking', [
             `INSERT INTO parking_reservations (
                  user_name, vehicle_number, reservation_date, start_time, parking_slot, email, time_period, phone
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [user_name, vehicle_number, reservation_date, formattedStartTime, parking_slot, email, time_period, phone]
+            [user_name, vehicle_number, reservation_date, start_time, parking_slot, email, time_period, phone]
         );
 
         res.status(201).json({ id: reservationResult.insertId, message: 'Parking reservation created' });
     } catch (error) {
+        print(e);
         console.error("Error during parking reservation:", error.message || error);
         res.status(500).json({ error: 'An unexpected error occurred while processing the parking reservation' });
     }
 });
+
+
+
+
+
 
 // Personal Companion reservation endpoint for personal_companion_reservation table
 app.post('/api/reserve-personal-companion', [

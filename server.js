@@ -7,6 +7,9 @@ const pool = require('./db'); // Import the database connection
 const app = express();
 const port = process.env.PORT || 6000;
 const saltRounds = 10; // for bcrypt
+  
+
+
 
 // Middleware
 app.use(express.json());
@@ -69,6 +72,7 @@ app.post('/api/login', [
     }
 
     const { email, password } = req.body;
+
 
     try {
         const [rows] = await pool.query('SELECT * FROM users_old WHERE email = ?', [email]);
@@ -134,35 +138,39 @@ app.post('/api/reserve-driver', [
 
 
 // Lounge reservation endpoint for lounge_reservations table
+app.use(express.json());  // This is necessary to parse JSON in the request body
+
 app.post('/api/reserve-lounge', [
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('lounge_name').notEmpty().withMessage('Lounge name is required'),
-    body('departure_time').isISO8601().withMessage('Valid ISO8601 departure time is required'),
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('lounge_name').notEmpty().withMessage('Lounge name is required'),
+  body('departure_time').isISO8601().withMessage('Valid ISO8601 departure time is required'),
+  body('name').notEmpty().withMessage('Name is required'),
+  body('phone').notEmpty().withMessage('Phone number is required'),
 ], async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        console.error("Validation errors:", errors.array());
-        return res.status(400).json({ errors: errors.array() });
-    }
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    console.error("Validation errors:", errors.array());
+    return res.status(400).json({ errors: errors.array() });
+  }
 
-    const { email, lounge_name, departure_time } = req.body;
+  const { name, email, phone, lounge_name, departure_time } = req.body;
 
-    try {
-        // Insert reservation into f_lounge
-        const [reservationResult] = await pool.query(
-            'INSERT INTO f_lounge (email, lounge_name, departure_date_time) VALUES (?, ?, ?)',
-            [email, lounge_name, departure_time]
-        );
+  try {
+    // Insert reservation into lounge_reservations table
+    const [reservationResult] = await pool.query(
+      'INSERT INTO lounge_reservations (name, email, phone, lounge_name, departure_time) VALUES (?, ?, ?, ?, ?)',
+      [name, email, phone, lounge_name, departure_time]
+    );
 
-        res.status(201).json({ id: reservationResult.insertId, message: 'Lounge reservation created' });
-    } catch (error) {
-        console.error("Error during lounge reservation:", error.message || error);
-        res.status(500).json({ error: 'An unexpected error occurred while processing the lounge reservation' });
-    }
+    res.status(201).json({
+      id: reservationResult.insertId,
+      message: 'Lounge reservation created successfully'
+    });
+  } catch (error) {
+    console.error("Error during lounge reservation:", error.message || error);
+    res.status(500).json({ error: 'email alredy exit ' });
+  }
 });
-
-
-
 
 
 
@@ -190,6 +198,16 @@ app.post('/api/reserve-parking', [
     const { user_name, vehicle_number, reservation_date, start_time, parking_slot, email, time_period, phone } = req.body;
 
     try {
+        // Check for existing reservation
+        const [existingReservation] = await pool.query(
+            `SELECT * FROM parking_reservations WHERE parking_slot = ? AND reservation_date = ?`,
+            [parking_slot, reservation_date]
+        );
+
+        if (existingReservation.length > 0) {
+            return res.status(400).json({ error: 'The selected parking slot is already reserved for the specified time' });
+        }
+
         // Insert reservation into parking_reservations table
         const [reservationResult] = await pool.query(
             `INSERT INTO parking_reservations (
@@ -211,6 +229,8 @@ app.post('/api/reserve-parking', [
 
 
 
+
+
 // Personal Companion reservation endpoint for personal_companion_reservation table
 app.post('/api/reserve-personal-companion', [
     body('name').notEmpty().withMessage('Name is required'),
@@ -219,6 +239,7 @@ app.post('/api/reserve-personal-companion', [
     body('date').isISO8601().withMessage('Valid reservation date is required'),
     body('time').notEmpty().withMessage('Time is required'),
     body('staff').notEmpty().withMessage('Staff name is required'),
+    body('passenger_type').notEmpty().withMessage('passenger type name is required'),
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -226,12 +247,12 @@ app.post('/api/reserve-personal-companion', [
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, email, phone, date, time, staff } = req.body;
+    const { name, email, phone, date, time, staff, passenger_type } = req.body;
 
     try {
         const [reservationResult] = await pool.query(
-            'INSERT INTO personal_companion_reservation (name, email, phone, date, time, staff) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, email, phone, date, time, staff]
+            'INSERT INTO personal_companion_reservation (name, email, phone, date, time, staff, passenger_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [name, email, phone, date, time, staff, passenger_type]
         );
 
         res.status(201).json({ id: reservationResult.insertId, message: 'Personal companion reservation created' });
@@ -240,6 +261,80 @@ app.post('/api/reserve-personal-companion', [
         res.status(500).json({ error: 'An unexpected error occurred while processing the personal companion reservation' });
     }
 });
+
+
+
+
+
+
+app.post('/api/get-reservations', async (req, res) => {
+    const { email } = req.body;
+  
+    if (!email) {
+      console.error('Email is missing in the request body.');
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+  
+    console.log(`Fetching reservations for email: ${email}`);
+  
+    try {
+      const reservations = {
+        driver_reservations: [],
+        lounge_reservations: [],
+        parking_reservations: [],
+        personal_companion_reservations: [],
+      };
+  
+      console.log('Fetching driver reservations...');
+      const driverReservations = await pool.query(
+        'SELECT * FROM driver_reservations WHERE email = ?',
+        [email]
+      );
+      reservations.driver_reservations = driverReservations[0];
+      console.log('Driver reservations fetched:', driverReservations[0]);
+  
+      console.log('Fetching lounge reservations...');
+      const loungeReservations = await pool.query(
+        'SELECT * FROM lounge_reservations WHERE email = ?',
+        [email]
+      );
+      reservations.lounge_reservations = loungeReservations[0];
+      console.log('Lounge reservations fetched:', loungeReservations[0]);
+  
+      console.log('Fetching parking reservations...');
+      const parkingReservations = await pool.query(
+        'SELECT * FROM parking_reservations WHERE email = ?',
+        [email]
+      );
+      reservations.parking_reservations = parkingReservations[0];
+      console.log('Parking reservations fetched:', parkingReservations[0]);
+  
+      console.log('Fetching personal companion reservations...');
+      const personalCompanionReservations = await pool.query(
+        'SELECT * FROM personal_companion_reservation WHERE email = ?',
+        [email]
+      );
+      reservations.personal_companion_reservations =
+        personalCompanionReservations[0];
+      console.log(
+        'Personal companion reservations fetched:',
+        personalCompanionReservations[0]
+      );
+  
+      console.log('All reservations fetched successfully.');
+      res.status(200).json({ success: true, data: reservations });
+    } catch (error) {
+      console.error('Error fetching reservations:', error);
+      res.status(500).json({ success: false, message: 'Server error' });
+    }
+  });
+  
+  
+
+
+
+
+
 
 
 

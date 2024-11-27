@@ -15,6 +15,16 @@ const saltRounds = 10; // for bcrypt
 app.use(express.json());
 app.use(cors());
 
+
+// Middleware to store the email after successful login or sign-up
+const storeEmailInRequest = (req, res, next) => {
+    if (req.body.email) {
+      req.userEmail = req.body.email; // Store the email in the request object
+    }
+    next();
+  };
+  
+
 // Sample endpoint
 app.get('/api/data', (req, res) => {
     res.json({ message: 'Hello from Node.js!' });
@@ -54,6 +64,9 @@ app.post('/api/signup', [
             [name, age, email, phone, hashedPassword]
         );
 
+         // Store email in the request object
+    req.userEmail = email;
+
         res.status(201).json({ id: result.insertId, message: 'User created' });
     } catch (error) {
         console.error(error);
@@ -88,8 +101,17 @@ app.post('/api/login', [
         if (!isMatch) {
             return res.status(401).json({ message: 'Incorrect password. Please try again.' });
         }
+         // Store email in the request object
+    req.userEmail = email;
 
-        res.status(200).json({ message: 'Login successful', userId: user.id });
+        res.status(200).json({message: 'Login successful',
+            userId: user.id,
+            name: user.name,
+            age: user.age,
+            email: user.email,
+            phone: user.phone,
+        });
+        
     } catch (error) {
         console.error('Error during login:', error);
         res.status(500).json({ error: 'An unexpected error occurred' });
@@ -328,6 +350,40 @@ app.post('/api/get-reservations', async (req, res) => {
       res.status(500).json({ success: false, message: 'Server error' });
     }
   });
+
+
+
+  // Endpoint to fetch user information based on email
+app.get('/api/user-info', async (req, res) => {
+    const { email } = req.query;
+
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+    }
+
+    try {
+        // Query to fetch user info from the users_old table
+        const [rows] = await pool.query('SELECT * FROM users_old WHERE email = ?', [email]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const user = rows[0];
+
+        // Send the user information as the response
+        res.status(200).json({
+            name: user.name,
+            age: user.age,
+            email: user.email,
+            phone: user.phone
+        });
+    } catch (error) {
+        console.error('Error fetching user info:', error);
+        res.status(500).json({ message: 'An error occurred while fetching user info' });
+    }
+});
+
   
   
 
